@@ -1,51 +1,60 @@
 /*!
- * morgan
- * Copyright(c) 2010 Sencha Inc.
- * Copyright(c) 2011 TJ Holowaychuk
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2014-2017 Douglas Christopher Wilson
+ * better-morgan
+ * Copyright(c) 2023 express.
+ * Copyright(c) 2023 Morgan
+ * Copyright(c) 2023 Mohtasim Alam Sohom
  * MIT Licensed
  */
 
-'use strict'
+"use strict";
 
 /**
  * Module exports.
  * @public
  */
 
-module.exports = morgan
-module.exports.compile = compile
-module.exports.format = format
-module.exports.token = token
+module.exports = betterMorgan;
+module.exports.compile = compile;
+module.exports.format = format;
+module.exports.token = token;
 
 /**
  * Module dependencies.
  * @private
  */
 
-var auth = require('basic-auth')
-var debug = require('debug')('morgan')
-var deprecate = require('depd')('morgan')
-var onFinished = require('on-finished')
-var onHeaders = require('on-headers')
+let auth = require("basic-auth");
+let debug = require("debug")("morgan");
+let deprecate = require("depd")("morgan");
+let onFinished = require("on-finished");
+let onHeaders = require("on-headers");
 
 /**
  * Array of CLF month names.
  * @private
  */
 
-var CLF_MONTH = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-]
+let CLF_MONTH = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /**
  * Default log buffer duration.
  * @private
  */
 
-var DEFAULT_BUFFER_DURATION = 1000
+let DEFAULT_BUFFER_DURATION = 1000;
 
 /**
  * Create a logger middleware.
@@ -56,309 +65,337 @@ var DEFAULT_BUFFER_DURATION = 1000
  * @return {Function} middleware
  */
 
-function morgan (format, options) {
-  var fmt = format
-  var opts = options || {}
+function betterMorgan(format, options) {
+  let fmt = format;
+  let opts = options || {};
 
-  if (format && typeof format === 'object') {
-    opts = format
-    fmt = opts.format || 'default'
+  if (format && typeof format === "object") {
+    opts = format;
+    fmt = opts.format || "default";
 
-    // smart deprecation message
-    deprecate('morgan(options): use morgan(' + (typeof fmt === 'string' ? JSON.stringify(fmt) : 'format') + ', options) instead')
+    deprecate(
+      "morgan(options): use morgan(" +
+        (typeof fmt === "string" ? JSON.stringify(fmt) : "format") +
+        ", options) instead"
+    );
   }
 
   if (fmt === undefined) {
-    deprecate('undefined format: specify a format')
+    deprecate("undefined format: specify a format");
   }
 
-  // output on request instead of response
-  var immediate = opts.immediate
+  let immediate = opts.immediate;
+  let skip = opts.skip || false;
+  let formatLine = typeof fmt !== "function" ? getFormatFunction(fmt) : fmt;
+  let buffer = opts.buffer;
+  let stream = opts.stream || process.stdout;
 
-  // check if log entry should be skipped
-  var skip = opts.skip || false
-
-  // format function
-  var formatLine = typeof fmt !== 'function'
-    ? getFormatFunction(fmt)
-    : fmt
-
-  // stream
-  var buffer = opts.buffer
-  var stream = opts.stream || process.stdout
-
-  // buffering support
   if (buffer) {
-    deprecate('buffer option')
-
-    // flush interval
-    var interval = typeof buffer !== 'number'
-      ? DEFAULT_BUFFER_DURATION
-      : buffer
-
-    // swap the stream
-    stream = createBufferStream(stream, interval)
+    deprecate("buffer option");
+    stream = createBufferStream(
+      stream,
+      typeof buffer !== "number" ? DEFAULT_BUFFER_DURATION : buffer
+    );
   }
 
-  return function logger (req, res, next) {
-    // request data
-    req._startAt = undefined
-    req._startTime = undefined
-    req._remoteAddress = getip(req)
+  return function logger(req, res, next) {
+    req._startAt = undefined;
+    req._startTime = undefined;
+    req._remoteAddress = getip(req);
 
-    // response data
-    res._startAt = undefined
-    res._startTime = undefined
+    res._startAt = undefined;
+    res._startTime = undefined;
 
-    // record request start
-    recordStartTime.call(req)
+    recordStartTime.call(req);
 
-    function logRequest () {
+    function logRequest() {
       if (skip !== false && skip(req, res)) {
-        debug('skip request')
-        return
+        debug("skip request");
+        return;
       }
 
-      var line = formatLine(morgan, req, res)
+      let line = formatLine(betterMorgan, req, res);
 
       if (line == null) {
-        debug('skip line')
-        return
+        debug("skip line");
+        return;
       }
 
-      debug('log request')
-      stream.write(line + '\n')
-    };
-
-    if (immediate) {
-      // immediate log
-      logRequest()
-    } else {
-      // record response start
-      onHeaders(res, recordStartTime)
-
-      // log when response finished
-      onFinished(res, logRequest)
+      debug("log request");
+      stream.write(line + "\n");
     }
 
-    next()
-  }
+    if (immediate) {
+      logRequest();
+    } else {
+      onHeaders(res, recordStartTime);
+      onFinished(res, logRequest);
+    }
+
+    next();
+  };
 }
 
 /**
  * Apache combined log format.
  */
 
-morgan.format('combined', ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"')
+betterMorgan.format(
+  "combined",
+  ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+);
 
 /**
  * Apache common log format.
  */
 
-morgan.format('common', ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length]')
+betterMorgan.format(
+  "common",
+  ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length]'
+);
 
 /**
  * Default format.
  */
 
-morgan.format('default', ':remote-addr - :remote-user [:date] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"')
-deprecate.property(morgan, 'default', 'default format: use combined format')
+betterMorgan.format(
+  "default",
+  ':remote-addr - :remote-user [:date] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+);
+deprecate.property(
+  betterMorgan,
+  "default",
+  "default format: use combined format"
+);
 
 /**
  * Short format.
  */
 
-morgan.format('short', ':remote-addr :remote-user :method :url HTTP/:http-version :status :res[content-length] - :response-time ms')
+betterMorgan.format(
+  "short",
+  ":remote-addr :remote-user :method :url HTTP/:http-version :status :res[content-length] - :response-time ms"
+);
 
 /**
  * Tiny format.
  */
 
-morgan.format('tiny', ':method :url :status :res[content-length] - :response-time ms')
+betterMorgan.format(
+  "tiny",
+  ":method :url :status :res[content-length] - :response-time ms"
+);
 
 /**
  * dev (colored)
  */
 
-morgan.format('dev', function developmentFormatLine (tokens, req, res) {
-  // get the status code if response written
-  var status = headersSent(res)
-    ? res.statusCode
-    : undefined
+betterMorgan.format("dev", function developmentFormatLine(tokens, req, res) {
+  // Get the request type
+  let requestType = tokens.method(req, res);
 
-  // get status color
-  var color = status >= 500 ? 31 // red
-    : status >= 400 ? 33 // yellow
-      : status >= 300 ? 36 // cyan
-        : status >= 200 ? 32 // green
-          : 0 // no color
+  // Set colors and formatting based on the request type
+  let requestColor =
+    requestType === "GET"
+      ? "\x1b[1;32m" // bold green for GET
+      : requestType === "DELETE"
+      ? "\x1b[1;31m" // bold red for DELETE
+      : requestType === "PUT"
+      ? "\x1b[1;33m" // bold yellow for PUT
+      : requestType === "POST"
+      ? "\x1b[1;34m" // bold blue for POST
+      : "\x1b[0m"; // no color for other methods
 
-  // get colored function
-  var fn = developmentFormatLine[color]
+  // Get the status code if response written
+  let status = headersSent(res) ? res.statusCode : undefined;
 
-  if (!fn) {
-    // compile
-    fn = developmentFormatLine[color] = compile('\x1b[0m:method :url \x1b[' +
-      color + 'm:status\x1b[0m :response-time ms - :res[content-length]\x1b[0m')
+  // Get status color
+  let statusColor =
+    status >= 500
+      ? "\x1b[31m" // red
+      : status >= 400
+      ? "\x1b[33m" // yellow
+      : status >= 300
+      ? "\x1b[36m" // cyan
+      : status >= 200
+      ? "\x1b[32m" // green
+      : "\x1b[0m"; // no color
+
+  // Get the response time
+  let responseTime = tokens["response-time"](req, res);
+
+  // Set colors based on the response time
+  let timeColor =
+    responseTime <= 300
+      ? "\x1b[32m" // green for <= 300ms
+      : responseTime <= 600
+      ? "\x1b[93m" // light yellow for 300-600ms
+      : responseTime <= 900
+      ? "\x1b[33m" // yellow for 600-900ms
+      : "\x1b[31m"; // red for > 900ms
+
+  // Compile the format with colors
+  let format = `${requestColor}:method\x1b[0m ${requestColor}\x1b[0m:url\x1b[0m ${statusColor}:status\x1b[0m ${timeColor}:response-time ms - :res[content-length]\x1b[0m`;
+
+  // Compile the format if it doesn't exist
+  if (!developmentFormatLine[format]) {
+    developmentFormatLine[format] = compile(format);
   }
 
-  return fn(tokens, req, res)
-})
+  // Return the compiled format
+  return developmentFormatLine[format](tokens, req, res);
+});
 
 /**
  * request url
  */
 
-morgan.token('url', function getUrlToken (req) {
-  return req.originalUrl || req.url
-})
+betterMorgan.token("url", function getUrlToken(req) {
+  return req.originalUrl || req.url;
+});
 
 /**
  * request method
  */
 
-morgan.token('method', function getMethodToken (req) {
-  return req.method
-})
+betterMorgan.token("method", function getMethodToken(req) {
+  return req.method;
+});
 
 /**
  * response time in milliseconds
  */
 
-morgan.token('response-time', function getResponseTimeToken (req, res, digits) {
-  if (!req._startAt || !res._startAt) {
-    // missing request and/or response start time
-    return
+betterMorgan.token(
+  "response-time",
+  function getResponseTimeToken(req, res, digits) {
+    if (!req._startAt || !res._startAt) {
+      // missing request and/or response start time
+      return;
+    }
+
+    // calculate diff
+    let ms =
+      (res._startAt[0] - req._startAt[0]) * 1e3 +
+      (res._startAt[1] - req._startAt[1]) * 1e-6;
+
+    // return truncated value
+    return ms.toFixed(digits === undefined ? 3 : digits);
   }
-
-  // calculate diff
-  var ms = (res._startAt[0] - req._startAt[0]) * 1e3 +
-    (res._startAt[1] - req._startAt[1]) * 1e-6
-
-  // return truncated value
-  return ms.toFixed(digits === undefined ? 3 : digits)
-})
+);
 
 /**
  * total time in milliseconds
  */
 
-morgan.token('total-time', function getTotalTimeToken (req, res, digits) {
+betterMorgan.token("total-time", function getTotalTimeToken(req, res, digits) {
   if (!req._startAt || !res._startAt) {
     // missing request and/or response start time
-    return
+    return;
   }
 
   // time elapsed from request start
-  var elapsed = process.hrtime(req._startAt)
+  let elapsed = process.hrtime(req._startAt);
 
   // cover to milliseconds
-  var ms = (elapsed[0] * 1e3) + (elapsed[1] * 1e-6)
+  let ms = elapsed[0] * 1e3 + elapsed[1] * 1e-6;
 
   // return truncated value
-  return ms.toFixed(digits === undefined ? 3 : digits)
-})
+  return ms.toFixed(digits === undefined ? 3 : digits);
+});
 
 /**
  * current date
  */
 
-morgan.token('date', function getDateToken (req, res, format) {
-  var date = new Date()
+betterMorgan.token("date", function getDateToken(req, res, format) {
+  let date = new Date();
 
-  switch (format || 'web') {
-    case 'clf':
-      return clfdate(date)
-    case 'iso':
-      return date.toISOString()
-    case 'web':
-      return date.toUTCString()
+  switch (format || "web") {
+    case "clf":
+      return clfdate(date);
+    case "iso":
+      return date.toISOString();
+    case "web":
+      return date.toUTCString();
   }
-})
+});
 
 /**
  * response status code
  */
 
-morgan.token('status', function getStatusToken (req, res) {
-  return headersSent(res)
-    ? String(res.statusCode)
-    : undefined
-})
+betterMorgan.token("status", function getStatusToken(req, res) {
+  return headersSent(res) ? String(res.statusCode) : undefined;
+});
 
 /**
  * normalized referrer
  */
 
-morgan.token('referrer', function getReferrerToken (req) {
-  return req.headers.referer || req.headers.referrer
-})
+betterMorgan.token("referrer", function getReferrerToken(req) {
+  return req.headers.referer || req.headers.referrer;
+});
 
 /**
  * remote address
  */
 
-morgan.token('remote-addr', getip)
+betterMorgan.token("remote-addr", getip);
 
 /**
  * remote user
  */
 
-morgan.token('remote-user', function getRemoteUserToken (req) {
+betterMorgan.token("remote-user", function getRemoteUserToken(req) {
   // parse basic credentials
-  var credentials = auth(req)
+  let credentials = auth(req);
 
   // return username
-  return credentials
-    ? credentials.name
-    : undefined
-})
+  return credentials ? credentials.name : undefined;
+});
 
 /**
  * HTTP version
  */
 
-morgan.token('http-version', function getHttpVersionToken (req) {
-  return req.httpVersionMajor + '.' + req.httpVersionMinor
-})
+betterMorgan.token("http-version", function getHttpVersionToken(req) {
+  return req.httpVersionMajor + "." + req.httpVersionMinor;
+});
 
 /**
  * UA string
  */
 
-morgan.token('user-agent', function getUserAgentToken (req) {
-  return req.headers['user-agent']
-})
+betterMorgan.token("user-agent", function getUserAgentToken(req) {
+  return req.headers["user-agent"];
+});
 
 /**
  * request header
  */
 
-morgan.token('req', function getRequestToken (req, res, field) {
+betterMorgan.token("req", function getRequestToken(req, res, field) {
   // get header
-  var header = req.headers[field.toLowerCase()]
+  let header = req.headers[field.toLowerCase()];
 
-  return Array.isArray(header)
-    ? header.join(', ')
-    : header
-})
+  return Array.isArray(header) ? header.join(", ") : header;
+});
 
 /**
  * response header
  */
 
-morgan.token('res', function getResponseHeader (req, res, field) {
+betterMorgan.token("res", function getResponseHeader(req, res, field) {
   if (!headersSent(res)) {
-    return undefined
+    return undefined;
   }
 
   // get header
-  var header = res.getHeader(field)
+  let header = res.getHeader(field);
 
-  return Array.isArray(header)
-    ? header.join(', ')
-    : header
-})
+  return Array.isArray(header) ? header.join(", ") : header;
+});
 
 /**
  * Format a Date in the common log format.
@@ -368,18 +405,29 @@ morgan.token('res', function getResponseHeader (req, res, field) {
  * @return {string}
  */
 
-function clfdate (dateTime) {
-  var date = dateTime.getUTCDate()
-  var hour = dateTime.getUTCHours()
-  var mins = dateTime.getUTCMinutes()
-  var secs = dateTime.getUTCSeconds()
-  var year = dateTime.getUTCFullYear()
+function clfdate(dateTime) {
+  let date = dateTime.getUTCDate();
+  let hour = dateTime.getUTCHours();
+  let mins = dateTime.getUTCMinutes();
+  let secs = dateTime.getUTCSeconds();
+  let year = dateTime.getUTCFullYear();
 
-  var month = CLF_MONTH[dateTime.getUTCMonth()]
+  let month = CLF_MONTH[dateTime.getUTCMonth()];
 
-  return pad2(date) + '/' + month + '/' + year +
-    ':' + pad2(hour) + ':' + pad2(mins) + ':' + pad2(secs) +
-    ' +0000'
+  return (
+    pad2(date) +
+    "/" +
+    month +
+    "/" +
+    year +
+    ":" +
+    pad2(hour) +
+    ":" +
+    pad2(mins) +
+    ":" +
+    pad2(secs) +
+    " +0000"
+  );
 }
 
 /**
@@ -390,25 +438,29 @@ function clfdate (dateTime) {
  * @public
  */
 
-function compile (format) {
-  if (typeof format !== 'string') {
-    throw new TypeError('argument format must be a string')
+function compile(format) {
+  if (typeof format !== "string") {
+    throw new TypeError("argument format must be a string");
   }
 
-  var fmt = String(JSON.stringify(format))
-  var js = '  "use strict"\n  return ' + fmt.replace(/:([-\w]{2,})(?:\[([^\]]+)\])?/g, function (_, name, arg) {
-    var tokenArguments = 'req, res'
-    var tokenFunction = 'tokens[' + String(JSON.stringify(name)) + ']'
+  let fmt = String(JSON.stringify(format));
+  let js =
+    '  "use strict"\n  return ' +
+    fmt.replace(/:([-\w]{2,})(?:\[([^\]]+)\])?/g, function (_, name, arg) {
+      let tokenArguments = "req, res";
+      let tokenFunction = "tokens[" + String(JSON.stringify(name)) + "]";
 
-    if (arg !== undefined) {
-      tokenArguments += ', ' + String(JSON.stringify(arg))
-    }
+      if (arg !== undefined) {
+        tokenArguments += ", " + String(JSON.stringify(arg));
+      }
 
-    return '" +\n    (' + tokenFunction + '(' + tokenArguments + ') || "-") + "'
-  })
+      return (
+        '" +\n    (' + tokenFunction + "(" + tokenArguments + ') || "-") + "'
+      );
+    });
 
   // eslint-disable-next-line no-new-func
-  return new Function('tokens, req, res', js)
+  return new Function("tokens, req, res", js);
 }
 
 /**
@@ -419,28 +471,28 @@ function compile (format) {
  * @public
  */
 
-function createBufferStream (stream, interval) {
-  var buf = []
-  var timer = null
+function createBufferStream(stream, interval) {
+  let buf = [];
+  let timer = null;
 
   // flush function
-  function flush () {
-    timer = null
-    stream.write(buf.join(''))
-    buf.length = 0
+  function flush() {
+    timer = null;
+    stream.write(buf.join(""));
+    buf.length = 0;
   }
 
   // write function
-  function write (str) {
+  function write(str) {
     if (timer === null) {
-      timer = setTimeout(flush, interval)
+      timer = setTimeout(flush, interval);
     }
 
-    buf.push(str)
+    buf.push(str);
   }
 
   // return a minimal "stream"
-  return { write: write }
+  return { write: write };
 }
 
 /**
@@ -451,9 +503,9 @@ function createBufferStream (stream, interval) {
  * @public
  */
 
-function format (name, fmt) {
-  morgan[name] = fmt
-  return this
+function format(name, fmt) {
+  betterMorgan[name] = fmt;
+  return this;
 }
 
 /**
@@ -464,14 +516,12 @@ function format (name, fmt) {
  * @public
  */
 
-function getFormatFunction (name) {
+function getFormatFunction(name) {
   // lookup format
-  var fmt = morgan[name] || name || morgan.default
+  let fmt = betterMorgan[name] || name || betterMorgan.default;
 
   // return compiled format
-  return typeof fmt !== 'function'
-    ? compile(fmt)
-    : fmt
+  return typeof fmt !== "function" ? compile(fmt) : fmt;
 }
 
 /**
@@ -482,11 +532,13 @@ function getFormatFunction (name) {
  * @return {string}
  */
 
-function getip (req) {
-  return req.ip ||
+function getip(req) {
+  return (
+    req.ip ||
     req._remoteAddress ||
     (req.connection && req.connection.remoteAddress) ||
     undefined
+  );
 }
 
 /**
@@ -497,11 +549,11 @@ function getip (req) {
  * @private
  */
 
-function headersSent (res) {
+function headersSent(res) {
   // istanbul ignore next: node.js 0.8 support
-  return typeof res.headersSent !== 'boolean'
+  return typeof res.headersSent !== "boolean"
     ? Boolean(res._header)
-    : res.headersSent
+    : res.headersSent;
 }
 
 /**
@@ -512,11 +564,11 @@ function headersSent (res) {
  * @return {string}
  */
 
-function pad2 (num) {
-  var str = String(num)
+function pad2(num) {
+  let str = String(num);
 
   // istanbul ignore next: num is current datetime
-  return (str.length === 1 ? '0' : '') + str
+  return (str.length === 1 ? "0" : "") + str;
 }
 
 /**
@@ -524,9 +576,9 @@ function pad2 (num) {
  * @private
  */
 
-function recordStartTime () {
-  this._startAt = process.hrtime()
-  this._startTime = new Date()
+function recordStartTime() {
+  this._startAt = process.hrtime();
+  this._startTime = new Date();
 }
 
 /**
@@ -538,7 +590,7 @@ function recordStartTime () {
  * @public
  */
 
-function token (name, fn) {
-  morgan[name] = fn
-  return this
+function token(name, fn) {
+  betterMorgan[name] = fn;
+  return this;
 }
